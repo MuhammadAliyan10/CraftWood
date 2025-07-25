@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-
 import {
   ArrowLeft,
   ChevronLeft,
@@ -21,6 +20,9 @@ import {
   Check,
   X,
   Zap,
+  Upload,
+  Type,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,163 +33,102 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import Image from "next/image";
 import Link from "next/link";
 import ProductCard from "@/components/(ReuseableComponents)/ProductCard";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import Head from "next/head";
-
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-  originalPrice?: number;
-  images: string[];
-  rating: number;
-  reviews: number;
-  isCustomizable: boolean;
-  category: string;
-  inStock: boolean;
-  description: string;
-}
-
-const products: Product[] = [
-  {
-    id: 1,
-    name: "Handcrafted Wooden Award",
-    price: 2500,
-    originalPrice: 3000,
-    images: ["/products/award/product1.jpg", "/products/award/product2.jpg"],
-    rating: 4.5,
-    reviews: 120,
-    isCustomizable: true,
-    category: "Awards",
-    inStock: true,
-    description:
-      "A beautifully crafted wooden award, perfect for recognizing achievements with a touch of elegance.",
-  },
-  {
-    id: 2,
-    name: "Vintage Wall Clock",
-    price: 3500,
-    images: ["/products/clock/product1.jpg", "/products/clock/product2.jpg"],
-    rating: 4.2,
-    reviews: 85,
-    isCustomizable: false,
-    category: "Clocks",
-    inStock: true,
-    description:
-      "A timeless vintage wall clock, adding rustic charm to any space.",
-  },
-  {
-    id: 3,
-    name: "Custom Phone Cover",
-    price: 1500,
-    originalPrice: 2000,
-    images: [
-      "/products/mobileCover/product1.jpg",
-      "/products/mobileCover/product2.jpg",
-    ],
-    rating: 4.7,
-    reviews: 200,
-    isCustomizable: true,
-    category: "Phone Cases",
-    inStock: true,
-    description:
-      "Personalize your phone with this durable, custom-designed cover.",
-  },
-  {
-    id: 4,
-    name: "Family Photo Album",
-    price: 4500,
-    images: ["/products/familyAlbum/product1.jpg"],
-    rating: 4.0,
-    reviews: 50,
-    isCustomizable: false,
-    category: "Albums",
-    inStock: false,
-    description:
-      "A handcrafted album to preserve your cherished family memories.",
-  },
-  {
-    id: 5,
-    name: "Engraved Key Chain",
-    price: 800,
-    images: [
-      "/products/keyChain/product1.jpg",
-      "/products/keyChain/product2.jpg",
-    ],
-    rating: 4.3,
-    reviews: 90,
-    isCustomizable: true,
-    category: "Key Chains",
-    inStock: true,
-    description: "A sleek, customizable key chain with intricate engravings.",
-  },
-  {
-    id: 6,
-    name: "Wooden House Plate",
-    price: 2800,
-    images: ["/products/housePlate/product1.jpg"],
-    rating: 4.6,
-    reviews: 110,
-    isCustomizable: true,
-    category: "Name Plates",
-    inStock: true,
-    description: "A personalized wooden house plate, perfect for home decor.",
-  },
-  {
-    id: 7,
-    name: "Leather Photo Album",
-    price: 5000,
-    images: ["/products/leatherAlbum/product1.jpg"],
-    rating: 4.1,
-    reviews: 60,
-    isCustomizable: true,
-    category: "Albums",
-    inStock: true,
-    description:
-      "A premium leather-bound photo album for your special moments.",
-  },
-  {
-    id: 8,
-    name: "No Image Product",
-    price: 2000,
-    images: [],
-    rating: 4.0,
-    reviews: 30,
-    isCustomizable: false,
-    category: "Awards",
-    inStock: true,
-    description: "A test product with no images to ensure robust handling.",
-  },
-];
+import { useStore } from "@/lib/store";
 
 export default function ProductDetails({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const router = useRouter();
   const resolvedParams = React.use(params);
   const id = parseInt(resolvedParams.id, 10);
-  if (isNaN(id)) {
-    notFound();
-  }
 
-  const product = products.find((p) => p.id === id);
+  // Zustand store
+  const {
+    selectedProduct,
+    setSelectedProduct,
+    getProductById,
+    clearSelectedProduct,
+    products,
+    getProductsByCategory,
+    addToCart,
+    totalItems,
+    cart,
+  } = useStore();
+
+  // Local UI state
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "description" | "reviews" | "shipping"
+    "description" | "features" | "reviews"
   >("description");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
 
-  if (!product) {
+  // Initialize product from store
+  useEffect(() => {
+    if (isNaN(id)) {
+      notFound();
+    }
+
+    const product = getProductById(id);
+    if (!product) {
+      notFound();
+    }
+
+    setSelectedProduct(product);
+    setIsLoading(false);
+
+    // Reset UI state when product changes
+    setCurrentImageIndex(0);
+    setQuantity(1);
+    setActiveTab("description");
+
+    // Cleanup on unmount
+    return () => {
+      clearSelectedProduct();
+    };
+  }, [id, getProductById, setSelectedProduct, clearSelectedProduct]);
+
+  // Check if product is already in wishlist (you can implement wishlist store later)
+  useEffect(() => {
+    if (selectedProduct) {
+      // Simulate checking wishlist status
+      // setIsWishlisted(isProductInWishlist(selectedProduct.id));
+    }
+  }, [selectedProduct]);
+
+  // Loading state
+  if (isLoading || !selectedProduct) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading product details...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Product not found (handled by useEffect, but keep as fallback)
+  if (!selectedProduct) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <Head>
-          <title>Product Not Found | Rafique Antiques</title>
+          <title>Product Not Found | CraftWood</title>
           <meta
             name="description"
             content="The requested product could not be found."
@@ -196,7 +137,7 @@ export default function ProductDetails({
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center max-w-md mx-auto p-8 bg-background/80 backdrop-blur-sm rounded-2xl shadow-xl border border-border/20"
+          className="text-center max-w-md mx-auto p-8 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200"
         >
           <div className="w-16 h-16 mx-auto mb-6 bg-primary/10 rounded-full flex items-center justify-center">
             <X className="w-8 h-8 text-primary" />
@@ -208,7 +149,7 @@ export default function ProductDetails({
             The product you are looking for does not exist or has been removed
             from our catalog.
           </p>
-          <Link href="/products" aria-label="Back to products">
+          <Link href="/products">
             <Button className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-xl">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Products
@@ -219,17 +160,22 @@ export default function ProductDetails({
     );
   }
 
+  const product = selectedProduct;
+
+  // Calculate discount
   const discount = product.originalPrice
     ? Math.round(
         ((product.originalPrice - product.price) / product.originalPrice) * 100
       )
     : 0;
 
+  // Get suggested products from store
   const suggestedProducts = products
     .filter((p) => p.id !== product.id)
     .sort((a, b) => (a.category === product.category ? -1 : 1))
     .slice(0, 4);
 
+  // Image navigation handlers
   const nextImage = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     setCurrentImageIndex((prev) => (prev + 1) % (product.images.length || 1));
@@ -243,28 +189,189 @@ export default function ProductDetails({
     );
   };
 
+  // Quantity handlers
   const increaseQuantity = () => setQuantity((prev) => prev + 1);
   const decreaseQuantity = () => setQuantity((prev) => Math.max(1, prev - 1));
+
+  // Navigation handlers
+  const handleCustomize = () => {
+    try {
+      if (!product) return;
+
+      router.push(`/editor/${product.id}`);
+    } catch (error) {
+      console.error("Navigation error:", error);
+      toast.error("Unable to open customization. Please try again.");
+    }
+  };
+  // Add to cart handler with store integration
+  const handleAddToCart = async () => {
+    if (!product) return;
+
+    setIsAddingToCart(true);
+
+    try {
+      // Create cart item
+      const cartItem = {
+        product: product,
+        quantity: quantity,
+        price: product.price,
+        // No device or customization for direct purchases
+      };
+
+      // Add to store
+      addToCart(cartItem);
+
+      // Show success message
+      toast.success(`${product.title} has been added to your cart!`, {
+        description: `Quantity: ${quantity} • Total: Rs. ${(
+          product.price * quantity
+        ).toLocaleString()}`,
+        action: {
+          label: "View Cart",
+          onClick: () => router.push("/cart"),
+        },
+      });
+
+      // Reset quantity
+      setQuantity(1);
+    } catch (error) {
+      console.error("Add to cart error:", error);
+      toast.error("Failed to add item to cart. Please try again.");
+    } finally {
+      setIsAddingToCart(false);
+    }
+  };
+
+  // Buy now handler
+  const handleBuyNow = async () => {
+    if (!product) return;
+
+    try {
+      // Add to cart first
+      await handleAddToCart();
+
+      // Navigate to checkout
+      router.push("/checkout");
+    } catch (error) {
+      console.error("Buy now error:", error);
+      toast.error("Unable to proceed to checkout. Please try again.");
+    }
+  };
+
+  // Wishlist handler (implement when wishlist store is ready)
+  const handleWishlistToggle = () => {
+    setIsWishlisted(!isWishlisted);
+    if (!isWishlisted) {
+      toast.success(`${product.title} added to wishlist!`);
+    } else {
+      toast.success(`${product.title} removed from wishlist!`);
+    }
+    // TODO: Integrate with wishlist store when implemented
+    // toggleWishlist(product.id);
+  };
+
+  // Share handler
+  const handleShare = async () => {
+    const shareData = {
+      title: product.title,
+      text: product.description,
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback to clipboard
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success("Product link copied to clipboard!");
+      }
+    } catch (error) {
+      console.error("Share error:", error);
+      // Fallback to clipboard
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success("Product link copied to clipboard!");
+      } catch (clipboardError) {
+        toast.error("Unable to share product link.");
+      }
+    }
+  };
+
+  // Check if product is in cart
+  const isInCart = cart.some((item) => item.product.id === product.id);
+  const cartQuantity = cart
+    .filter((item) => item.product.id === product.id)
+    .reduce((sum, item) => sum + item.quantity, 0);
+
+  // Customization helpers
+  const getCustomizationIcon = () => {
+    if (!product.isCustomizable) return <Palette className="w-5 h-5" />;
+
+    const hasImageUpload = product.features?.some(
+      (f) =>
+        f.toLowerCase().includes("image") || f.toLowerCase().includes("photo")
+    );
+    const hasTextCustomization = product.features?.some(
+      (f) =>
+        f.toLowerCase().includes("text") || f.toLowerCase().includes("name")
+    );
+
+    if (hasImageUpload && hasTextCustomization) {
+      return <Palette className="w-5 h-5" />;
+    } else if (hasImageUpload) {
+      return <ImageIcon className="w-5 h-5" />;
+    } else if (hasTextCustomization) {
+      return <Type className="w-5 h-5" />;
+    }
+    return <Palette className="w-5 h-5" />;
+  };
+
+  const getCustomizationText = () => {
+    if (!product.isCustomizable) return "Customize Now";
+
+    const hasImageUpload = product.features?.some(
+      (f) =>
+        f.toLowerCase().includes("image") || f.toLowerCase().includes("photo")
+    );
+    const hasTextCustomization = product.features?.some(
+      (f) =>
+        f.toLowerCase().includes("text") || f.toLowerCase().includes("name")
+    );
+
+    if (hasImageUpload && hasTextCustomization) {
+      return "Customize Design";
+    } else if (hasImageUpload) {
+      return "Upload Your Image";
+    } else if (hasTextCustomization) {
+      return "Add Custom Text";
+    }
+    return "Customize Now";
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       <Head>
-        <title>{product.name} | Rafique Antiques</title>
+        <title>{product.title} | CraftWood</title>
         <meta
           name="description"
-          content={`Explore the ${
-            product.name
-          }, a handcrafted ${product.category.toLowerCase()} with a rating of ${
-            product.rating
-          }.`}
+          content={`Customize the ${
+            product.title
+          }, a handcrafted ${product.category.toLowerCase()} with personalization options.`}
         />
+        <meta property="og:title" content={`${product.title} | CraftWood`} />
+        <meta property="og:description" content={product.description} />
+        {product.images.length > 0 && (
+          <meta property="og:image" content={product.images[0]} />
+        )}
       </Head>
 
-      {/* Enhanced Navigation Bar */}
-      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-border/20">
+      {/* Navigation Bar */}
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-200">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <Link href="/products" aria-label="Back to products">
+            <Link href="/products">
               <Button
                 variant="ghost"
                 className="text-foreground hover:text-primary hover:bg-primary/10 rounded-xl px-4 py-2"
@@ -278,12 +385,15 @@ export default function ProductDetails({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsWishlisted(!isWishlisted)}
+                onClick={handleWishlistToggle}
                 className={`rounded-full p-2 ${
                   isWishlisted
                     ? "text-red-500 bg-red-50"
                     : "text-muted-foreground hover:text-primary"
                 }`}
+                aria-label={
+                  isWishlisted ? "Remove from wishlist" : "Add to wishlist"
+                }
               >
                 <Heart
                   className={`w-5 h-5 ${isWishlisted ? "fill-current" : ""}`}
@@ -292,7 +402,9 @@ export default function ProductDetails({
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={handleShare}
                 className="rounded-full p-2 text-muted-foreground hover:text-primary"
+                aria-label="Share product"
               >
                 <Share2 className="w-5 h-5" />
               </Button>
@@ -305,7 +417,7 @@ export default function ProductDetails({
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Product Details Section */}
         <div className="grid lg:grid-cols-2 gap-12 mb-16">
-          {/* Enhanced Image Section */}
+          {/* Image Section */}
           <motion.div
             initial={{ opacity: 0, x: -40 }}
             animate={{ opacity: 1, x: 0 }}
@@ -317,23 +429,15 @@ export default function ProductDetails({
               <motion.div
                 whileHover={{ scale: product.images.length ? 1.02 : 1 }}
                 transition={{ duration: 0.3 }}
-                className="relative h-96 lg:h-[500px] bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl overflow-hidden shadow-2xl cursor-pointer border border-border/20"
+                className="relative h-96 lg:h-[500px] bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl overflow-hidden shadow-2xl cursor-pointer border border-gray-200"
                 onClick={() => product.images.length && setIsGalleryOpen(true)}
-                aria-label={`View gallery for ${product.name}`}
-                role="button"
-                tabIndex={product.images.length ? 0 : -1}
-                onKeyDown={(e) =>
-                  product.images.length &&
-                  e.key === "Enter" &&
-                  setIsGalleryOpen(true)
-                }
               >
                 {product.images.length ? (
                   <Image
                     src={
                       product.images[currentImageIndex] || "/placeholder.jpg"
                     }
-                    alt={product.name}
+                    alt={product.title}
                     fill
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                     priority={currentImageIndex === 0}
@@ -352,14 +456,20 @@ export default function ProductDetails({
                 {/* Floating badges */}
                 <div className="absolute top-4 left-4 flex flex-col gap-2">
                   {discount > 0 && (
-                    <Badge className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">
+                    <Badge className="bg-red-500 text-white px-3 py-1 rounded-full font-semibold">
                       -{discount}%
                     </Badge>
                   )}
                   {product.isCustomizable && (
-                    <Badge className="bg-secondary text-secondary-foreground px-3 py-1 rounded-full">
-                      <Palette className="w-3 h-3 mr-1" />
+                    <Badge className="bg-blue-500 text-white px-3 py-1 rounded-full flex items-center gap-1">
+                      <Palette className="w-3 h-3" />
                       Customizable
+                    </Badge>
+                  )}
+                  {isInCart && (
+                    <Badge className="bg-green-500 text-white px-3 py-1 rounded-full flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      In Cart ({cartQuantity})
                     </Badge>
                   )}
                 </div>
@@ -397,12 +507,13 @@ export default function ProductDetails({
                     className={`relative flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition-all ${
                       index === currentImageIndex
                         ? "border-primary shadow-lg"
-                        : "border-border/20 hover:border-primary/50"
+                        : "border-gray-200 hover:border-primary/50"
                     }`}
+                    aria-label={`View image ${index + 1}`}
                   >
                     <Image
                       src={image}
-                      alt={`${product.name} thumbnail ${index + 1}`}
+                      alt={`${product.title} thumbnail ${index + 1}`}
                       fill
                       className="object-cover"
                     />
@@ -412,7 +523,7 @@ export default function ProductDetails({
             )}
           </motion.div>
 
-          {/* Enhanced Details Section */}
+          {/* Details Section */}
           <motion.div
             initial={{ opacity: 0, x: 40 }}
             animate={{ opacity: 1, x: 0 }}
@@ -424,30 +535,18 @@ export default function ProductDetails({
               <div className="flex items-start justify-between">
                 <Badge
                   variant="secondary"
-                  className="px-4 py-1 rounded-full text-sm font-medium"
+                  className="px-4 py-1 rounded-full text-sm font-medium bg-primary/10 text-primary"
                 >
                   {product.category}
                 </Badge>
-                <div
-                  className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    product.inStock
-                      ? "bg-green-100 text-green-700 border border-green-200"
-                      : "bg-red-100 text-red-700 border border-red-200"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {product.inStock ? (
-                      <Check className="w-3 h-3" />
-                    ) : (
-                      <X className="w-3 h-3" />
-                    )}
-                    {product.inStock ? "In Stock" : "Out of Stock"}
-                  </div>
+                <div className="px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 bg-green-100 text-green-700 border border-green-200">
+                  <Check className="w-3 h-3" />
+                  In Stock
                 </div>
               </div>
 
               <h1 className="text-3xl lg:text-4xl font-bold text-foreground leading-tight">
-                {product.name}
+                {product.title}
               </h1>
 
               {/* Rating & Reviews */}
@@ -495,18 +594,29 @@ export default function ProductDetails({
               </div>
             </div>
 
-            {/* Customize Button */}
+            {/* Customization CTA */}
             {product.isCustomizable && (
-              <Link href={`/product/${product.id}/customize`} passHref>
-                <Button
-                  className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground py-6 rounded-xl text-lg font-semibold shadow-lg hover:shadow-xl transition-all"
-                  aria-label="Customize this product"
-                >
-                  <Palette className="w-5 h-5 mr-3" />
-                  Customize Your Own Design
-                  <Zap className="w-5 h-5 ml-3" />
-                </Button>
-              </Link>
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-primary/10 to-blue-500/10 rounded-2xl p-6 border border-primary/20">
+                  <div className="flex items-center gap-3 mb-3">
+                    {getCustomizationIcon()}
+                    <h3 className="text-lg font-semibold text-foreground">
+                      Make it Yours!
+                    </h3>
+                  </div>
+                  <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
+                    {product.description}
+                  </p>
+                  <Button
+                    onClick={handleCustomize}
+                    className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-white py-4 rounded-xl text-lg font-semibold shadow-lg hover:shadow-xl transition-all"
+                  >
+                    {getCustomizationIcon()}
+                    <span className="ml-3">{getCustomizationText()}</span>
+                    <Zap className="w-5 h-5 ml-3" />
+                  </Button>
+                </div>
+              </div>
             )}
 
             {/* Quantity & Actions */}
@@ -514,11 +624,12 @@ export default function ProductDetails({
               {/* Quantity Selector */}
               <div className="flex items-center gap-4">
                 <span className="font-semibold text-foreground">Quantity:</span>
-                <div className="flex items-center border border-border rounded-xl overflow-hidden">
+                <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
                   <button
                     onClick={decreaseQuantity}
                     disabled={quantity <= 1}
                     className="p-3 hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Decrease quantity"
                   >
                     <Minus className="w-4 h-4" />
                   </button>
@@ -528,42 +639,48 @@ export default function ProductDetails({
                   <button
                     onClick={increaseQuantity}
                     className="p-3 hover:bg-primary/10 transition-colors"
+                    aria-label="Increase quantity"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Button
-                  disabled={!product.inStock}
-                  className={`py-6 rounded-xl text-lg font-semibold transition-all ${
-                    product.inStock
-                      ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl"
-                      : "bg-muted text-muted-foreground cursor-not-allowed"
-                  }`}
-                  aria-label="Add to cart"
-                >
-                  <ShoppingCart className="w-5 h-5 mr-3" />
-                  Add to Cart
-                </Button>
-                <Button
-                  disabled={!product.inStock}
-                  className={`py-6 rounded-xl text-lg font-semibold transition-all ${
-                    product.inStock
-                      ? "bg-secondary hover:bg-secondary/90 text-secondary-foreground shadow-lg hover:shadow-xl"
-                      : "bg-muted text-muted-foreground cursor-not-allowed"
-                  }`}
-                  aria-label="Buy now"
-                >
-                  Buy Now
-                </Button>
-              </div>
+              {/* Action Buttons - Only if NOT customizable */}
+              {!product.isCustomizable && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Button
+                    onClick={handleAddToCart}
+                    disabled={isAddingToCart}
+                    className="py-6 rounded-xl text-lg font-semibold transition-all bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl"
+                  >
+                    {isAddingToCart ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Adding...
+                      </div>
+                    ) : (
+                      <>
+                        <ShoppingCart className="w-5 h-5 mr-3" />
+                        {isInCart
+                          ? `Add More (${cartQuantity} in cart)`
+                          : "Add to Cart"}
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleBuyNow}
+                    disabled={isAddingToCart}
+                    className="py-6 rounded-xl text-lg font-semibold transition-all bg-secondary hover:bg-secondary/90 text-secondary-foreground shadow-lg hover:shadow-xl"
+                  >
+                    Buy Now
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Trust Indicators */}
-            <div className="grid grid-cols-3 gap-4 pt-6 border-t border-border/20">
+            <div className="grid grid-cols-3 gap-4 pt-6 border-t border-gray-200">
               <div className="text-center space-y-2">
                 <div className="w-12 h-12 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
                   <Truck className="w-6 h-6 text-primary" />
@@ -601,21 +718,21 @@ export default function ProductDetails({
           </motion.div>
         </div>
 
-        {/* Enhanced Tabs Section */}
+        {/* Tabs Section */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
           className="mb-16"
         >
-          <div className="bg-background/80 backdrop-blur-sm rounded-2xl shadow-xl border border-border/20 overflow-hidden">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
             {/* Tab Navigation */}
-            <div className="border-b border-border/20">
+            <div className="border-b border-gray-200">
               <div className="flex">
                 {[
                   { id: "description", label: "Description", icon: Info },
+                  { id: "features", label: "Features", icon: Palette },
                   { id: "reviews", label: "Reviews", icon: Star },
-                  { id: "shipping", label: "Shipping", icon: Truck },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -648,9 +765,52 @@ export default function ProductDetails({
                       Product Description
                     </h3>
                     <p className="text-muted-foreground leading-relaxed text-lg">
-                      {product.description ||
-                        "No description available for this product."}
+                      {product.description}
                     </p>
+                  </motion.div>
+                )}
+
+                {activeTab === "features" && (
+                  <motion.div
+                    key="features"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h3 className="text-xl font-semibold text-foreground mb-4">
+                      Product Features
+                    </h3>
+                    {product.features && product.features.length > 0 ? (
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {product.features.map((feature, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-3 p-4 bg-primary/5 rounded-lg"
+                          >
+                            <Check className="w-5 h-5 text-green-500 flex-shrink-0" />
+                            <span className="text-foreground font-medium">
+                              {feature}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        No specific features listed for this product.
+                      </p>
+                    )}
+                    {product.isCustomizable && (
+                      <div className="mt-6">
+                        <Button
+                          onClick={handleCustomize}
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-3 rounded-xl"
+                        >
+                          Start Customizing Now
+                          <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
+                        </Button>
+                      </div>
+                    )}
                   </motion.div>
                 )}
 
@@ -689,44 +849,8 @@ export default function ProductDetails({
                     </div>
                     <p className="text-muted-foreground">
                       Reviews functionality would be implemented here with
-                      actual review data.
+                      actual review data from the store.
                     </p>
-                  </motion.div>
-                )}
-
-                {activeTab === "shipping" && (
-                  <motion.div
-                    key="shipping"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className="space-y-6"
-                  >
-                    <h3 className="text-xl font-semibold text-foreground mb-4">
-                      Shipping Information
-                    </h3>
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-foreground">
-                          Delivery Options
-                        </h4>
-                        <ul className="space-y-2 text-muted-foreground">
-                          <li>• Standard Delivery: 5-7 business days</li>
-                          <li>• Express Delivery: 2-3 business days</li>
-                          <li>• Same Day Delivery (select cities)</li>
-                        </ul>
-                      </div>
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-foreground">
-                          Return Policy
-                        </h4>
-                        <ul className="space-y-2 text-muted-foreground">
-                          <li>• 30-day return window</li>
-                          <li>• Free returns on defective items</li>
-                          <li>• Original packaging required</li>
-                        </ul>
-                      </div>
-                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -734,20 +858,20 @@ export default function ProductDetails({
           </div>
         </motion.div>
 
-        {/* Enhanced Gallery Dialog */}
+        {/* Gallery Dialog */}
         <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>
-          <DialogContent className="max-w-5xl bg-background/95 backdrop-blur-xl border border-border/20 rounded-2xl">
+          <DialogContent className="max-w-5xl bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold">
-                {product.name} Gallery
+                {product.title} Gallery
               </DialogTitle>
-              <DialogClose aria-label="Close gallery" />
+              <DialogClose />
             </DialogHeader>
             <div className="relative h-[70vh] mt-6 rounded-xl overflow-hidden">
               {product.images.length ? (
                 <Image
                   src={product.images[currentImageIndex] || "/placeholder.jpg"}
-                  alt={`${product.name} - Image ${currentImageIndex + 1}`}
+                  alt={`${product.title} - Image ${currentImageIndex + 1}`}
                   fill
                   className="object-contain"
                   priority={currentImageIndex === 0}
@@ -788,7 +912,7 @@ export default function ProductDetails({
                             ? "bg-primary scale-125"
                             : "bg-primary/30 hover:bg-primary/60"
                         }`}
-                        aria-label={`View image ${index + 1}`}
+                        aria-label={`Go to image ${index + 1}`}
                       />
                     ))}
                   </div>
@@ -799,31 +923,26 @@ export default function ProductDetails({
         </Dialog>
       </div>
 
-      {/* Enhanced Suggested Products Section */}
-      <div className="bg-gradient-to-br from-primary/5 via-background to-secondary/5 py-16 border-t border-border/20">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            viewport={{ once: true }}
-            className="text-center mb-12"
-          >
-            <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
-              You May Also Like
-            </h2>
-            <p className="text-muted-foreground text-lg max-w-2xl mx-auto leading-relaxed">
-              {suggestedProducts.length
-                ? `Discover more handcrafted treasures${
-                    product.category
-                      ? ` from our ${product.category} collection`
-                      : ""
-                  } that match your style and preferences.`
-                : "Explore other handcrafted products from our curated collection."}
-            </p>
-          </motion.div>
+      {/* Suggested Products Section */}
+      {suggestedProducts.length > 0 && (
+        <div className="bg-gradient-to-br from-primary/5 via-background to-secondary/5 py-16 border-t border-gray-200">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="text-center mb-12"
+            >
+              <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
+                You May Also Like
+              </h2>
+              <p className="text-muted-foreground text-lg max-w-2xl mx-auto leading-relaxed">
+                Discover more handcrafted treasures from our {product.category}{" "}
+                collection that match your style.
+              </p>
+            </motion.div>
 
-          {suggestedProducts.length ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               <AnimatePresence>
                 {suggestedProducts.map((suggestedProduct, index) => (
@@ -841,50 +960,28 @@ export default function ProductDetails({
                 ))}
               </AnimatePresence>
             </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-center py-16"
-            >
-              <div className="w-16 h-16 mx-auto mb-6 bg-primary/10 rounded-full flex items-center justify-center">
-                <Info className="w-8 h-8 text-primary" />
-              </div>
-              <p className="text-muted-foreground text-lg">
-                No related products available at the moment.
-              </p>
-            </motion.div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Floating Action Button for Mobile */}
-      <div className="fixed bottom-6 right-6 lg:hidden z-40">
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 1, type: "spring", stiffness: 200 }}
-        >
-          <Button
-            disabled={!product.inStock}
-            onClick={() => {
-              // Scroll to action buttons on mobile
-              const actionSection = document.querySelector(
-                '[aria-label="Add to cart"]'
-              );
-              actionSection?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className={`w-14 h-14 rounded-full shadow-2xl ${
-              product.inStock
-                ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                : "bg-muted text-muted-foreground cursor-not-allowed"
-            }`}
-            aria-label="Quick add to cart"
+      {/* Floating Customize Button for Mobile */}
+      {product.isCustomizable && (
+        <div className="fixed bottom-6 right-6 lg:hidden z-40">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 1, type: "spring", stiffness: 200 }}
           >
-            <ShoppingCart className="w-6 h-6" />
-          </Button>
-        </motion.div>
-      </div>
+            <Button
+              onClick={handleCustomize}
+              className="w-14 h-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 text-primary-foreground"
+              aria-label="Customize product"
+            >
+              <Palette className="w-6 h-6" />
+            </Button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

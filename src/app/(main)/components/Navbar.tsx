@@ -34,9 +34,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { usePathname } from "next/navigation"; // Import usePathname
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { useStore } from "@/lib/store";
 
 const navigationItems = [
   { name: "Home", href: "/" },
@@ -47,19 +48,36 @@ const navigationItems = [
 ];
 
 const quickLinks = [
-  { name: "Phone Cases", href: "/products/phone-cases" },
-  { name: "Wall Art", href: "/products/wall-art" },
-  { name: "Name Plates", href: "/products/name-plates" },
-  { name: "Custom Orders", href: "/custom" },
+  { name: "Phone Cases", href: "/products?category=Mobile Cases" },
+  { name: "Watch Faces", href: "/products?category=Watch Accessories" },
+  { name: "Name Plates", href: "/products?category=Home Decor" },
+  { name: "Custom Orders", href: "/products?customizable=true" },
 ];
 
 export default function Navbar() {
+  // Local state for UI
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
-  const [cartItems] = useState(3); // Mock cart count
-  const [wishlistItems] = useState(5); // Mock wishlist count
-  const pathname = usePathname(); // Get current pathname
+
+  // Zustand store
+  const {
+    cart,
+    totalItems,
+    totalPrice,
+    toggleCart,
+    isOpen: isCartOpen,
+    searchProducts,
+    products,
+    setProducts,
+  } = useStore();
+
+  // Router for navigation
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Mock wishlist count (can be added to store later)
+  const [wishlistItems] = useState(5);
 
   // Handle scroll effect
   useEffect(() => {
@@ -70,11 +88,55 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Handle search functionality with store integration
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      console.log("Searching for:", searchQuery);
-      // Handle search logic here
+      // Search products using store
+      const searchResults = searchProducts(searchQuery.trim());
+
+      // Navigate to products page with search results
+      const searchParams = new URLSearchParams();
+      searchParams.set("search", searchQuery.trim());
+      router.push(`/products?${searchParams.toString()}`);
+
+      // Close search
+      setIsSearchOpen(false);
+      setSearchQuery("");
+
+      console.log(
+        `Found ${searchResults.length} products for: "${searchQuery}"`
+      );
+    }
+  };
+
+  // Handle search input changes with real-time suggestions (optional)
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+
+    // Optional: Show live search suggestions
+    if (value.trim().length > 2) {
+      const suggestions = searchProducts(value.trim());
+      // You can use this for dropdown suggestions
+      console.log(`${suggestions.length} suggestions for: "${value}"`);
+    }
+  };
+
+  // Handle cart toggle
+  const handleCartToggle = () => {
+    toggleCart();
+  };
+
+  // Format cart total price
+  const formatPrice = (price: number) => {
+    return `Rs. ${price.toLocaleString()}`;
+  };
+
+  // Handle navigation with store cleanup if needed
+  const handleNavigation = (href: string) => {
+    // Optional: Clear any temporary store states when navigating
+    if (href === "/products") {
+      // Could reset filters, search, etc. if needed
     }
   };
 
@@ -92,34 +154,34 @@ export default function Navbar() {
             <div className="flex items-center space-x-2 mb-2 sm:mb-0">
               <MapPin className="w-4 h-4 text-primary" />
               <address className="not-italic">
-                <a
+                <Link
                   href="/contact"
                   className="hover:text-primary transition-colors duration-200"
                   aria-label="Visit our store in Sillanwali, Pakistan"
                 >
                   Sillanwali, Pakistan
-                </a>
+                </Link>
               </address>
             </div>
             <div className="flex items-center space-x-4 text-center sm:text-left">
-              <a
+              <Link
                 href="/shipping"
                 className="hover:text-primary transition-colors duration-200"
                 aria-label="Learn about free shipping on orders over Rs. 3,000"
               >
                 Free shipping on orders over Rs. 3,000
-              </a>
+              </Link>
               <Separator
                 orientation="vertical"
                 className="h-4 bg-border/50 hidden sm:block"
               />
-              <a
-                href="/new-arrivals"
+              <Link
+                href="/products?filter=new"
                 className="hover:text-primary transition-colors duration-200"
                 aria-label="Explore new arrivals weekly"
               >
                 ✨ New arrivals weekly
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -145,6 +207,7 @@ export default function Navbar() {
                 whileTap={{ scale: 0.98 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
                 className="flex items-center space-x-2 sm:space-x-3 cursor-pointer group"
+                onClick={() => handleNavigation("/")}
               >
                 <div className="relative">
                   <Image
@@ -171,6 +234,7 @@ export default function Navbar() {
             <div className="hidden lg:flex items-center space-x-1">
               {navigationItems.map((item, index) => (
                 <Link
+                  key={item.name}
                   id={item.name}
                   href={item.href}
                   className={`relative px-4 py-2 rounded-lg font-medium transition-all duration-200 group ${
@@ -178,6 +242,7 @@ export default function Navbar() {
                       ? "text-primary"
                       : "text-foreground hover:text-primary"
                   }`}
+                  onClick={() => handleNavigation(item.href)}
                 >
                   {item.name}
                   <span
@@ -207,11 +272,17 @@ export default function Navbar() {
                         <Input
                           placeholder="Search products, categories..."
                           value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onChange={(e) => handleSearchChange(e.target.value)}
                           className="pr-20 pl-4 h-10 border-primary/30 focus:border-primary shadow-lg"
                           autoFocus
                           onBlur={() => {
                             setTimeout(() => setIsSearchOpen(false), 200);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              setIsSearchOpen(false);
+                              setSearchQuery("");
+                            }
                           }}
                         />
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1">
@@ -219,6 +290,7 @@ export default function Navbar() {
                             type="submit"
                             size="sm"
                             className="h-6 px-2 bg-primary hover:bg-primary/90"
+                            disabled={!searchQuery.trim()}
                           >
                             <Search className="w-3 h-3" />
                           </Button>
@@ -227,7 +299,10 @@ export default function Navbar() {
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0 hover:bg-destructive/10"
-                            onClick={() => setIsSearchOpen(false)}
+                            onClick={() => {
+                              setIsSearchOpen(false);
+                              setSearchQuery("");
+                            }}
                           >
                             <X className="w-3 h-3" />
                           </Button>
@@ -240,6 +315,7 @@ export default function Navbar() {
                       size="icon"
                       onClick={() => setIsSearchOpen(true)}
                       className="text-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200"
+                      aria-label="Open search"
                     >
                       <Search className="w-5 h-5" />
                     </Button>
@@ -252,6 +328,8 @@ export default function Navbar() {
                 variant="ghost"
                 size="icon"
                 className="hidden md:flex text-foreground hover:text-primary hover:bg-primary/10 relative transition-all duration-200"
+                aria-label={`Wishlist (${wishlistItems} items)`}
+                onClick={() => router.push("/wishlist")}
               >
                 <Heart className="w-5 h-5" />
                 {wishlistItems > 0 && (
@@ -262,43 +340,124 @@ export default function Navbar() {
               </Button>
 
               {/* Cart */}
-              <Sheet>
+              <Sheet open={isCartOpen} onOpenChange={toggleCart}>
                 <SheetTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="text-foreground hover:text-primary hover:bg-primary/10 relative transition-all duration-200"
+                    aria-label={`Shopping cart (${totalItems} items)`}
+                    onClick={handleCartToggle}
                   >
                     <ShoppingCart className="w-5 h-5" />
-                    {cartItems > 0 && (
+                    {totalItems > 0 && (
                       <Badge className="absolute -top-2 -right-2 bg-primary hover:bg-primary/90 text-primary-foreground min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-xs p-0">
-                        {cartItems}
+                        {totalItems}
                       </Badge>
                     )}
                   </Button>
                 </SheetTrigger>
                 <SheetContent className="w-full sm:max-w-lg bg-card/95 backdrop-blur-lg">
                   <SheetHeader className="space-y-4">
-                    <SheetTitle className="text-foreground flex items-center space-x-2">
-                      <ShoppingCart className="w-5 h-5" />
-                      <span>Shopping Cart ({cartItems})</span>
+                    <SheetTitle className="text-foreground flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <ShoppingCart className="w-5 h-5" />
+                        <span>Shopping Cart ({totalItems})</span>
+                      </div>
+                      {totalPrice > 0 && (
+                        <span className="text-sm text-muted-foreground">
+                          {formatPrice(totalPrice)}
+                        </span>
+                      )}
                     </SheetTitle>
                   </SheetHeader>
                   <div className="mt-8 space-y-4">
-                    <div className="text-center py-12 text-muted-foreground">
-                      <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                        <ShoppingCart className="w-8 h-8 opacity-50" />
+                    {cart.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                          <ShoppingCart className="w-8 h-8 opacity-50" />
+                        </div>
+                        <h3 className="font-semibold mb-2">
+                          Your cart is empty
+                        </h3>
+                        <p className="text-sm mb-4">
+                          Add some beautiful wooden crafts to get started!
+                        </p>
+                        <SheetClose asChild>
+                          <Button
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                            onClick={() => router.push("/products")}
+                          >
+                            Continue Shopping
+                          </Button>
+                        </SheetClose>
                       </div>
-                      <h3 className="font-semibold mb-2">Your cart is empty</h3>
-                      <p className="text-sm mb-4">
-                        Add some beautiful wooden crafts to get started!
-                      </p>
-                      <SheetClose asChild>
-                        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                          Continue Shopping
-                        </Button>
-                      </SheetClose>
-                    </div>
+                    ) : (
+                      <>
+                        {/* Cart Items */}
+                        <div className="space-y-4 max-h-96 overflow-y-auto">
+                          {cart.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex items-center space-x-3 p-3 border rounded-lg"
+                            >
+                              <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
+                                <Package className="w-6 h-6 text-muted-foreground" />
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="font-medium text-sm">
+                                  {item.product.title}
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                  Qty: {item.quantity} ×{" "}
+                                  {formatPrice(item.price)}
+                                </p>
+                                {item.device && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Device: {item.device.name}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <p className="font-medium text-sm">
+                                  {formatPrice(item.price * item.quantity)}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <Separator />
+
+                        {/* Cart Actions */}
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center font-semibold">
+                            <span>Total ({totalItems} items):</span>
+                            <span className="text-primary">
+                              {formatPrice(totalPrice)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <SheetClose asChild>
+                              <Button
+                                variant="outline"
+                                onClick={() => router.push("/cart")}
+                              >
+                                View Cart
+                              </Button>
+                            </SheetClose>
+                            <SheetClose asChild>
+                              <Button
+                                className="bg-primary hover:bg-primary/90"
+                                onClick={() => router.push("/checkout")}
+                              >
+                                Checkout
+                              </Button>
+                            </SheetClose>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </SheetContent>
               </Sheet>
@@ -310,6 +469,7 @@ export default function Navbar() {
                     variant="ghost"
                     size="icon"
                     className="hidden md:flex text-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200"
+                    aria-label="User account menu"
                   >
                     <User className="w-5 h-5" />
                   </Button>
@@ -318,17 +478,17 @@ export default function Navbar() {
                   align="end"
                   className="w-48 border border-border"
                 >
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/account")}>
                     <User className="w-4 h-4 mr-2" />
                     My Account
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/orders")}>
                     <Package className="w-4 h-4 mr-2" />
                     My Orders
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/wishlist")}>
                     <Heart className="w-4 h-4 mr-2" />
-                    Wishlist
+                    Wishlist ({wishlistItems})
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -340,6 +500,7 @@ export default function Navbar() {
                     variant="ghost"
                     size="icon"
                     className="lg:hidden text-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200"
+                    aria-label="Open menu"
                   >
                     <Menu className="w-5 h-5" />
                   </Button>
@@ -362,16 +523,17 @@ export default function Navbar() {
                     <div className="space-y-2">
                       {navigationItems.map((item) => (
                         <SheetClose asChild key={item.name}>
-                          <a
+                          <Link
                             href={item.href}
                             className={`block px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
                               pathname === item.href
                                 ? "text-primary bg-primary/10 border-l-4 border-primary"
                                 : "text-foreground hover:text-primary hover:bg-primary/5"
                             }`}
+                            onClick={() => handleNavigation(item.href)}
                           >
                             {item.name}
-                          </a>
+                          </Link>
                         </SheetClose>
                       ))}
                     </div>
@@ -385,12 +547,12 @@ export default function Navbar() {
                       </h4>
                       {quickLinks.map((link) => (
                         <SheetClose asChild key={link.name}>
-                          <a
+                          <Link
                             href={link.href}
                             className="block px-4 py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
                           >
                             {link.name}
-                          </a>
+                          </Link>
                         </SheetClose>
                       ))}
                     </div>
@@ -409,9 +571,16 @@ export default function Navbar() {
                         <span className="text-sm font-medium text-foreground">
                           Cart
                         </span>
-                        <Badge className="bg-primary text-primary-foreground">
-                          {cartItems}
-                        </Badge>
+                        <div className="flex items-center space-x-2">
+                          <Badge className="bg-primary text-primary-foreground">
+                            {totalItems}
+                          </Badge>
+                          {totalPrice > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatPrice(totalPrice)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -421,11 +590,21 @@ export default function Navbar() {
                     <div className="space-y-3 text-sm">
                       <div className="flex items-center space-x-2 text-muted-foreground">
                         <Phone className="w-4 h-4" />
-                        <span>+92 300 1234567</span>
+                        <a
+                          href="tel:+923001234567"
+                          className="hover:text-primary"
+                        >
+                          +92 300 1234567
+                        </a>
                       </div>
                       <div className="flex items-center space-x-2 text-muted-foreground">
                         <Mail className="w-4 h-4" />
-                        <span>info@craftwood.pk</span>
+                        <a
+                          href="mailto:info@craftwood.pk"
+                          className="hover:text-primary"
+                        >
+                          info@craftwood.pk
+                        </a>
                       </div>
                     </div>
                   </div>
